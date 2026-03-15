@@ -2,8 +2,8 @@ const CACHE_NAME = 'classroom-tracker-v1';
 const ASSETS = [
   './index.html',
   './manifest.json',
-  './icons/icon-192x192.png',
-  './icons/icon-512x512.png'
+  './icon-192x192.png',
+  './icon-512x512.png'
 ];
 
 // Install: cache core assets
