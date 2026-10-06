@@ -4,16 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>課堂問答記錄系統</title>
-
-<!-- PWA -->
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1a1208">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="問答記錄">
-<link rel="apple-touch-icon" href="icon-192x192.png">
-<link rel="icon" type="image/svg+xml" href="icon.svg">
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -149,8 +139,44 @@
   .score-badge.total { border-color: var(--accent); color: var(--accent); }
   .score-badge.correct { border-color: var(--accent2); color: var(--accent2); }
   .score-badge.rate { border-color: var(--accent3); color: var(--accent3); }
+  .score-badge.absent { border-color: #7b2d2d; color: #7b2d2d; }
+  .score-badge.homework { border-color: #5a3d8a; color: #5a3d8a; }
   .score-badge .val { font-family: 'JetBrains Mono', monospace; font-size: 1.4rem; font-weight: 600; }
   .score-badge .lbl { font-size: 0.58rem; letter-spacing: 0.1em; opacity: 0.8; }
+
+  .counter-row {
+    display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap;
+  }
+  .counter-card {
+    flex: 1; min-width: 160px;
+    border: 1.5px solid var(--border); border-radius: 2px;
+    background: var(--aged); padding: 12px 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .counter-card.absent-card { border-color: rgba(123,45,45,0.4); background: rgba(123,45,45,0.05); }
+  .counter-card.homework-card { border-color: rgba(90,61,138,0.4); background: rgba(90,61,138,0.05); }
+  .counter-info { display: flex; flex-direction: column; gap: 2px; }
+  .counter-label { font-size: 0.72rem; color: var(--muted); letter-spacing: 0.05em; }
+  .counter-val {
+    font-family: 'JetBrains Mono', monospace; font-size: 1.6rem; font-weight: 700;
+  }
+  .absent-card .counter-val { color: #7b2d2d; }
+  .homework-card .counter-val { color: #5a3d8a; }
+  .counter-btns { display: flex; flex-direction: column; gap: 5px; }
+  .counter-btn {
+    width: 32px; height: 28px; border: 1.5px solid var(--border);
+    background: var(--paper); cursor: pointer; border-radius: 2px;
+    font-size: 1rem; font-weight: 700; transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink);
+  }
+  .counter-btn.plus:hover { background: var(--accent); border-color: var(--accent); color: white; }
+  .counter-btn.minus:hover { background: var(--muted); border-color: var(--muted); color: white; }
+  .counter-btn:disabled { opacity: 0.3; cursor: default; }
+  .counter-log {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.62rem;
+    color: var(--muted); max-width: 120px; line-height: 1.5;
+  }
   .record-form {
     background: var(--aged); border: 1.5px solid var(--border);
     border-radius: 2px; padding: 18px; margin-bottom: 22px; position: relative;
@@ -741,10 +767,10 @@ function exportExcel() {
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Summary
-  const summaryRows = [['姓名', '座號', '班級', '總問答次數', '完全正確', '部分正確', '回答錯誤', '表現指數(%)']];
+  const summaryRows = [['姓名', '座號', '班級', '總問答次數', '完全正確', '部分正確', '回答錯誤', '表現指數(%)', '曠課次數', '缺交作業次數']];
   state.students.forEach(s => {
     const st = studentStats(s.id);
-    summaryRows.push([s.rawName || s.name, s.no||'', s.cls||'', st.total, st.correct, st.partial, st.wrong, st.rate]);
+    summaryRows.push([s.rawName || s.name, s.no||'', s.cls||'', st.total, st.correct, st.partial, st.wrong, st.rate, st.absent, st.homework]);
   });
   const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
   ws1['!cols'] = [{wch:14},{wch:8},{wch:14},{wch:12},{wch:10},{wch:10},{wch:10},{wch:14}];
@@ -807,7 +833,38 @@ function studentStats(id) {
   const partial = records.filter(r => r.result === 'partial').length;
   const wrong = records.filter(r => r.result === 'wrong').length;
   const rate = total ? Math.round((correct + partial * 0.5) / total * 100) : 0;
-  return { total, correct, partial, wrong, rate };
+  const s = state.students.find(s => s.id === id) || {};
+  const absent = s.absentCount || 0;
+  const homework = s.homeworkCount || 0;
+  return { total, correct, partial, wrong, rate, absent, homework };
+}
+
+function changeCount(studentId, field, delta) {
+  const s = state.students.find(s => s.id === studentId);
+  if (!s) return;
+  const prev = s[field] || 0;
+  s[field] = Math.max(0, prev + delta);
+  // append log entry
+  const logField = field === 'absentCount' ? 'absentLog' : 'homeworkLog';
+  if (!s[logField]) s[logField] = [];
+  if (delta > 0) {
+    s[logField].push(new Date().toISOString().slice(0,10));
+  } else if (delta < 0 && s[logField].length > 0) {
+    s[logField].pop();
+  }
+  save(); renderSidebar(); renderMain();
+}
+
+function absenceLog(id) {
+  const s = state.students.find(s => s.id === id);
+  if (!s || !s.absentLog || !s.absentLog.length) return '尚無記錄';
+  return s.absentLog.slice(-3).reverse().join('\n');
+}
+
+function homeworkLog(id) {
+  const s = state.students.find(s => s.id === id);
+  if (!s || !s.homeworkLog || !s.homeworkLog.length) return '尚無記錄';
+  return s.homeworkLog.slice(-3).reverse().join('\n');
 }
 
 // ── Records ──
@@ -959,7 +1016,7 @@ function renderSidebar() {
       <div class="chip-checkbox"></div>
       <div class="student-chip-info" style="flex:1;min-width:0">
         <div class="student-name">${nameDisplay}${noDisplay ? ' <span style="font-family:\'JetBrains Mono\',monospace;font-size:0.72rem;color:var(--muted)">#'+noDisplay+'</span>' : ''}</div>
-        <div class="student-stats">${stats.total} 次問答 · 正確率 ${stats.rate}%</div>
+        <div class="student-stats">${stats.total} 次問答 · ${stats.rate}%${stats.absent>0?' · 曠'+stats.absent:''}${stats.homework>0?' · 缺交'+stats.homework:''}</div>
         <div class="perf-bar-wrap"><div class="perf-bar" style="width:${stats.rate}%;background:${barColor}"></div></div>
       </div>
       <div class="chip-actions">
@@ -990,11 +1047,39 @@ function renderMain() {
         </div>
       </div>
       <div class="score-badges">
-        <div class="score-badge total"><span class="val">${stats.total}</span><span class="lbl">總次數</span></div>
+        <div class="score-badge total"><span class="val">${stats.total}</span><span class="lbl">總問答</span></div>
         <div class="score-badge correct"><span class="val">${stats.correct}</span><span class="lbl">完全正確</span></div>
         <div class="score-badge rate"><span class="val">${stats.rate}%</span><span class="lbl">表現指數</span></div>
+        <div class="score-badge absent"><span class="val">${stats.absent}</span><span class="lbl">曠課</span></div>
+        <div class="score-badge homework"><span class="val">${stats.homework}</span><span class="lbl">缺交作業</span></div>
       </div>
     </div>
+
+    <div class="counter-row">
+      <div class="counter-card absent-card">
+        <div class="counter-info">
+          <div class="counter-label">🏃 曠課次數</div>
+          <div class="counter-val">${stats.absent}</div>
+          <div class="counter-log">${absenceLog(student.id)}</div>
+        </div>
+        <div class="counter-btns">
+          <button class="counter-btn plus" onclick="changeCount(${student.id},'absentCount',1)" title="新增曠課">＋</button>
+          <button class="counter-btn minus" onclick="changeCount(${student.id},'absentCount',-1)" title="減少" ${stats.absent===0?'disabled':''}>－</button>
+        </div>
+      </div>
+      <div class="counter-card homework-card">
+        <div class="counter-info">
+          <div class="counter-label">📝 缺交作業次數</div>
+          <div class="counter-val">${stats.homework}</div>
+          <div class="counter-log">${homeworkLog(student.id)}</div>
+        </div>
+        <div class="counter-btns">
+          <button class="counter-btn plus" onclick="changeCount(${student.id},'homeworkCount',1)" title="新增缺交">＋</button>
+          <button class="counter-btn minus" onclick="changeCount(${student.id},'homeworkCount',-1)" title="減少" ${stats.homework===0?'disabled':''}>－</button>
+        </div>
+      </div>
+    </div>
+
     <div class="record-form">
       <div class="form-row" style="align-items:center">
         <div class="form-group">
@@ -1066,15 +1151,6 @@ function renderMain() {
   setResult(selectedResult);
   setDiff(selectedDiff);
   refreshScorePreview();
-}
-
-// ── Service Worker ──
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('SW registered:', reg.scope))
-      .catch(err => console.warn('SW failed:', err));
-  });
 }
 </script>
 </body>
