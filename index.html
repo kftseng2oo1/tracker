@@ -434,6 +434,31 @@
   }
   .btn-multiselect:hover { border-color: var(--accent); color: var(--accent); }
 
+  /* 學號 / 平時成績 */
+  .btn-score { border-color: var(--gold); color: var(--gold); background: transparent; }
+  .btn-score:hover { background: var(--gold); color: var(--ink); }
+  .sid-input {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; padding: 2px 6px;
+    border: 1px dashed var(--border); background: var(--paper); color: var(--ink);
+    border-radius: 2px; width: 130px; outline: none;
+  }
+  .sid-input:focus { border-color: var(--accent); border-style: solid; }
+  .sc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .sc-grid .form-group input { width: 100%; }
+  .sc-hint { font-size: 0.72rem; color: var(--muted); line-height: 1.6; margin-bottom: 10px; }
+  .sc-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 7px 10px; border-bottom: 1px solid var(--border);
+  }
+  .sc-row:last-child { border-bottom: none; }
+  .sc-row.nosid { background: rgba(196,75,42,0.07); }
+  .sc-main { min-width: 0; }
+  .sc-name { font-size: 0.88rem; font-weight: 600; }
+  .sc-sub { font-family: 'JetBrains Mono', monospace; font-size: 0.64rem; color: var(--muted); margin-top: 1px; }
+  .sc-score { font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; font-weight: 700; color: var(--accent3); flex-shrink: 0; }
+  .sc-row.nosid .sc-score { color: var(--muted); }
+  @media (max-width: 480px) { .sc-grid { grid-template-columns: repeat(2, 1fr); } }
+
   /* Roll call */
   .btn-rollcall { border-color: var(--accent2); background: var(--accent2); color: #fff; font-weight: 600; }
   .btn-rollcall:hover { background: #2f6149; border-color: #2f6149; }
@@ -495,6 +520,7 @@
     <button class="btn-header btn-template" onclick="downloadTemplate()">⬇ 下載範本</button>
     <button class="btn-header btn-import" onclick="document.getElementById('fileInput').click()">📂 匯入 Excel</button>
     <button class="btn-header btn-export-xlsx" onclick="exportExcel()">📊 匯出報表</button>
+    <button class="btn-header btn-score" onclick="openScoreModal()" title="計算平時成績並匯出給成績掃描">🎯 平時成績</button>
     <button class="btn-header btn-savedata" onclick="saveDataFile()" title="將所有資料存成備份檔">💾 儲存資料</button>
     <button class="btn-header btn-loaddata" onclick="document.getElementById('loadDataInput').click()" title="從備份檔讀取資料">📁 讀取資料</button>
     <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="importExcel(event)">
@@ -521,7 +547,7 @@
     </div>
     <div class="search-box">
       <span class="search-icon">🔍</span>
-      <input type="text" id="studentSearch" placeholder="輸入末3碼座號快速搜尋" maxlength="10" oninput="onSearch(this.value)">
+      <input type="text" id="studentSearch" placeholder="輸入學號末3碼快速搜尋" maxlength="10" oninput="onSearch(this.value)">
       <button class="clear-btn" id="searchClear" onclick="clearSearch()">✕</button>
     </div>
     <div class="search-match-count" id="searchMatchCount"></div>
@@ -581,10 +607,37 @@
   </div>
 </div>
 
+<!-- Score modal -->
+<div class="modal-overlay" id="scoreModal" style="display:none">
+  <div class="modal rc-modal">
+    <h3>🎯 平時成績</h3>
+    <div class="sc-hint">平時分 ＝ 問答平均分 − 各項扣分（限 0～100）。匯出的 Excel 可直接用成績掃描的「匯入名冊」讀入，填進「平時考核」欄。</div>
+    <div class="sc-grid">
+      <div class="form-group"><label>無問答時基準分</label><input type="number" id="sc_base" min="0" max="100" step="1" oninput="scChange()"></div>
+      <div class="form-group"><label>未請假每次扣</label><input type="number" id="sc_unexcused" min="0" step="0.5" oninput="scChange()"></div>
+      <div class="form-group"><label>事假每次扣</label><input type="number" id="sc_personal" min="0" step="0.5" oninput="scChange()"></div>
+      <div class="form-group"><label>病假每次扣</label><input type="number" id="sc_sick" min="0" step="0.5" oninput="scChange()"></div>
+      <div class="form-group"><label>缺交練習題每次扣</label><input type="number" id="sc_hwExercise" min="0" step="0.5" oninput="scChange()"></div>
+      <div class="form-group"><label>缺交章節作業每次扣</label><input type="number" id="sc_hwChapter" min="0" step="0.5" oninput="scChange()"></div>
+    </div>
+    <div class="rc-controls"><div class="form-group"><label>班級</label><select id="scClass" onchange="scRender()"></select></div></div>
+    <div class="rc-notice" id="scNotice"></div>
+    <div class="rc-list" id="scList"></div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn-cancel" onclick="closeModal('scoreModal')">關閉</button>
+      <button class="btn-danger" style="background:var(--accent2)" onclick="scExport()">匯出 Excel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Import preview modal -->
 <div class="modal-overlay" id="importModal" style="display:none">
   <div class="modal">
     <h3>📂 確認匯入名單</h3>
+    <div class="form-group" id="importClassRow" style="display:none;margin-bottom:10px">
+      <label>班級名稱（檔案沒有班級欄時套用）</label>
+      <input type="text" id="importClassInput" oninput="importRender()">
+    </div>
     <div class="import-preview" id="importPreview"></div>
     <p id="importSummary"></p>
     <div class="modal-actions">
@@ -597,6 +650,7 @@
 <script>
 let state = JSON.parse(localStorage.getItem('classroomTracker') || '{"students":[],"records":[]}');
 if (!Array.isArray(state.attendance)) state.attendance = [];  // 點名紀錄：[{date, cls, marks:{學生id: 狀態}}]
+if (!state.settings || typeof state.settings !== 'object') state.settings = {};  // 平時成績扣分設定
 let activeStudentId = null;
 let selectedResult = 'correct';
 let pendingImport = [];
@@ -714,17 +768,18 @@ function filteredStudents() {
   if (!searchQuery) return list;
   const q = searchQuery.replace(/\s/g, '');
   return list.filter(s => {
+    const sid = String(s.sid || '').replace(/\s/g, '');
     const no = String(s.no || '').replace(/\s/g, '');
-    if (!no) return false;
-    return no.endsWith(q) || no.includes(q);
+    return (sid && sid.includes(q)) || (no && no.includes(q));
   });
 }
 
 function highlightNo(no, query) {
-  if (!query || !no) return no || '';
+  if (!no) return '';
+  if (!query) return rcEsc(no);
   const idx = no.lastIndexOf(query);
-  if (idx < 0) return no;
-  return no.slice(0, idx) + `<span class="highlight">${no.slice(idx, idx + query.length)}</span>` + no.slice(idx + query.length);
+  if (idx < 0) return rcEsc(no);
+  return rcEsc(no.slice(0, idx)) + `<span class="highlight">${rcEsc(no.slice(idx, idx + query.length))}</span>` + rcEsc(no.slice(idx + query.length));
 }
 
 function toast(msg, type = 'ok') {
@@ -741,18 +796,28 @@ function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 function downloadTemplate() {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([
-    ['姓名', '座號', '班級'],
-    ['王小明', '1', '三年甲班'],
-    ['李小花', '2', '三年甲班'],
-    ['陳大偉', '3', '三年甲班'],
+    ['學號', '座號', '姓名', '班級'],
+    ['113001', '1', '王小明', '三年甲班'],
+    ['113002', '2', '李小花', '三年甲班'],
+    ['113003', '3', '陳大偉', '三年甲班'],
   ]);
-  ws['!cols'] = [{wch:14},{wch:8},{wch:14}];
+  ws['!cols'] = [{wch:12},{wch:8},{wch:14},{wch:14}];
   XLSX.utils.book_append_sheet(wb, ws, '學生名單');
   XLSX.writeFile(wb, '學生名單範本.xlsx');
   toast('範本已下載 📄');
 }
 
 // ── Import Excel ──
+// 可讀成績掃描匯出的名冊（順序／學號／姓名），也可讀本系統範本（學號／座號／姓名／班級）
+let importDraft = null;
+
+function guessClassName(wb, file) {
+  const sheet = (wb.SheetNames[0] || '').trim();
+  const generic = /^(sheet|工作表|成績表|學生名單|名單|名冊)\s*\d*$/i;
+  if (sheet && !generic.test(sheet)) return sheet;
+  return file.name.replace(/\.[^.]+$/, '').trim();
+}
+
 function importExcel(event) {
   const file = event.target.files[0];
   event.target.value = '';
@@ -765,56 +830,190 @@ function importExcel(event) {
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
       if (rows.length < 2) { toast('檔案內容為空或格式錯誤', 'error'); return; }
 
-      const header = rows[0].map(h => String(h).trim());
-      let nameCol = header.findIndex(h => h.includes('姓名') || h.toLowerCase().includes('name'));
-      if (nameCol < 0) nameCol = 0;
-      const noCol = header.findIndex(h => h.includes('座號') || h.includes('號'));
-      const classCol = header.findIndex(h => h.includes('班級') || h.includes('班'));
+      // 標題列：前 5 列中第一個含「學號／姓名」的列
+      let hr = 0;
+      for (let r = 0; r < Math.min(5, rows.length); r++) {
+        if (rows[r].some(c => /學號|姓名/.test(String(c)))) { hr = r; break; }
+      }
+      const header = rows[hr].map(h => String(h).trim());
+      const find = test => header.findIndex(test);
+      const sidCol = find(h => h.includes('學號'));
+      let nameCol = find(h => h.includes('姓名') || h.toLowerCase() === 'name');
+      const noCol = find(h => h.includes('座號') || h.includes('順序'));
+      const classCol = find(h => h.includes('班級') || h === '班');
+      if (nameCol < 0) {
+        if (sidCol >= 0) { toast('找不到「姓名」欄位', 'error'); return; }
+        nameCol = 0; // 舊格式：第一欄就是姓名
+      }
 
       const candidates = [];
-      for (let i = 1; i < rows.length; i++) {
+      for (let i = hr + 1; i < rows.length; i++) {
         const row = rows[i];
         const name = String(row[nameCol] || '').trim();
         if (!name) continue;
-        const no = noCol >= 0 ? String(row[noCol] || '').trim() : '';
-        const cls = classCol >= 0 ? String(row[classCol] || '').trim() : '';
-        const isDup = state.students.some(s => (s.rawName || s.name) === name);
-        candidates.push({ name, no, cls, isDup });
+        candidates.push({
+          name,
+          sid: sidCol >= 0 ? String(row[sidCol] || '').trim() : '',
+          no: noCol >= 0 ? String(row[noCol] || '').trim() : '',
+          cls: classCol >= 0 ? String(row[classCol] || '').trim() : ''
+        });
       }
       if (candidates.length === 0) { toast('找不到有效的學生姓名', 'error'); return; }
 
-      const newCount = candidates.filter(c => !c.isDup).length;
-      const dupCount = candidates.filter(c => c.isDup).length;
-
-      document.getElementById('importPreview').innerHTML = candidates.map(c =>
-        c.isDup
-          ? `<div class="dup-tag">— ${c.name}${c.no?' ('+c.no+')':''}${c.cls?' · '+c.cls:''} （已存在，跳過）</div>`
-          : `<div class="new-tag">＋ ${c.name}${c.no?' ('+c.no+')':''}${c.cls?' · '+c.cls:''}</div>`
-      ).join('');
-
-      document.getElementById('importSummary').textContent =
-        `共讀取 ${candidates.length} 筆，將新增 ${newCount} 位學生，略過 ${dupCount} 位重複。`;
-
-      pendingImport = candidates.filter(c => !c.isDup);
-      document.getElementById('confirmImportBtn').onclick = () => {
-        pendingImport.forEach(c => {
-          const displayName = c.no ? `[${c.no}] ${c.name}` : c.name;
-          state.students.push({
-            id: Date.now() + Math.random(),
-            name: displayName, rawName: c.name,
-            no: c.no, cls: c.cls,
-            createdAt: new Date().toISOString()
-          });
-        });
-        save(); renderClassFilter(); renderSidebar(); closeModal('importModal');
-        toast(`成功匯入 ${pendingImport.length} 位學生 ✓`);
-      };
+      importDraft = { candidates };
+      const needClass = candidates.some(c => !c.cls);
+      document.getElementById('importClassRow').style.display = needClass ? 'flex' : 'none';
+      document.getElementById('importClassInput').value = needClass ? guessClassName(wb, file) : '';
+      importRender();
       document.getElementById('importModal').style.display = 'flex';
     } catch (err) {
       toast('檔案讀取失敗，請確認格式正確', 'error');
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// 比對既有學生：雙方都有學號就以學號為準，否則用「姓名＋班級」
+function importMatch(c, cls) {
+  return state.students.find(s => {
+    if (c.sid && s.sid) return s.sid === c.sid;
+    return (s.rawName || s.name) === c.name && (s.cls || '') === cls;
+  });
+}
+
+function importPlan() {
+  const fallback = document.getElementById('importClassInput').value.trim();
+  return importDraft.candidates.map(c => {
+    const cls = c.cls || fallback;
+    const m = importMatch(c, cls);
+    const status = !m ? 'new' : (c.sid && !m.sid ? 'fill' : 'dup');
+    return { c, cls, m, status };
+  });
+}
+
+function importRender() {
+  const plan = importPlan();
+  document.getElementById('importPreview').innerHTML = plan.map(p => {
+    const label = rcEsc(p.c.name) + (p.c.sid ? ' · ' + rcEsc(p.c.sid) : '') + (p.c.no ? ' (' + rcEsc(p.c.no) + ')' : '') + (p.cls ? ' · ' + rcEsc(p.cls) : '');
+    if (p.status === 'dup') return '<div class="dup-tag">— ' + label + ' （已存在，跳過）</div>';
+    if (p.status === 'fill') return '<div class="new-tag" style="color:var(--accent3)">↺ ' + label + ' （補上學號）</div>';
+    return '<div class="new-tag">＋ ' + label + '</div>';
+  }).join('');
+  const n = k => plan.filter(p => p.status === k).length;
+  document.getElementById('importSummary').textContent =
+    `共讀取 ${plan.length} 筆：新增 ${n('new')} 位` + (n('fill') ? `，補齊學號 ${n('fill')} 位` : '') + `，略過重複 ${n('dup')} 位。`;
+  document.getElementById('confirmImportBtn').onclick = () => importApply(plan);
+}
+
+function importApply(plan) {
+  let added = 0, filled = 0;
+  plan.forEach(p => {
+    if (p.status === 'new') {
+      const c = p.c;
+      state.students.push({
+        id: Date.now() + Math.random(),
+        name: c.no ? `[${c.no}] ${c.name}` : c.name,
+        rawName: c.name, sid: c.sid, no: c.no, cls: p.cls,
+        createdAt: new Date().toISOString()
+      });
+      added++;
+    } else if (p.status === 'fill') {
+      p.m.sid = p.c.sid;
+      if (!p.m.no && p.c.no) p.m.no = p.c.no;
+      filled++;
+    }
+  });
+  save(); renderClassFilter(); renderSidebar(); closeModal('importModal');
+  toast(`匯入完成：新增 ${added} 位` + (filled ? `，補齊學號 ${filled} 位` : '') + ' ✓');
+}
+
+// ── 學號與平時成績 ──
+function setSid(id, val) {
+  const s = state.students.find(x => x.id === id);
+  if (!s) return;
+  const v = String(val).trim();
+  if (v) {
+    const other = state.students.find(x => x.id !== id && x.sid === v);
+    if (other) { toast('學號已被「' + (other.rawName || other.name) + '」使用', 'error'); renderMain(); return; }
+  }
+  s.sid = v;
+  save(); renderSidebar();
+  toast(v ? '已更新學號' : '已清除學號');
+}
+
+const SCORE_DEFAULTS = { base: 80, unexcused: 5, personal: 0, sick: 0, hwExercise: 2, hwChapter: 5 };
+function getScoreCfg() { return Object.assign({}, SCORE_DEFAULTS, state.settings.score || {}); }
+
+// 平時分 = 問答平均分（沒問答用基準分）− 各項扣分，限制在 0～100
+function calcRegularScore(id) {
+  const cfg = getScoreCfg();
+  const st = studentStats(id);
+  const recs = state.records.filter(r => r.studentId === id && typeof r.score === 'number');
+  const avg = recs.length ? recs.reduce((a, r) => a + r.score, 0) / recs.length : cfg.base;
+  const deduct = st.absentUnexcused * cfg.unexcused + st.absentPersonal * cfg.personal + st.absentSick * cfg.sick
+               + st.hwExercise * cfg.hwExercise + st.hwChapter * cfg.hwChapter;
+  return { n: recs.length, avg, deduct, score: Math.max(0, Math.min(100, Math.round(avg - deduct))) };
+}
+
+function openScoreModal() {
+  if (!state.students.length) { toast('請先新增或匯入學生', 'error'); return; }
+  const cfg = getScoreCfg();
+  Object.keys(SCORE_DEFAULTS).forEach(k => { document.getElementById('sc_' + k).value = cfg[k]; });
+  const opts = rcClassOptions();
+  const sel = document.getElementById('scClass');
+  sel.innerHTML = '';
+  opts.forEach(c => sel.appendChild(new Option(c || '（未分班）', c)));
+  if (activeClass !== '全部' && opts.includes(activeClass)) sel.value = activeClass;
+  scRender();
+  document.getElementById('scoreModal').style.display = 'flex';
+}
+
+function scChange() {
+  const cfg = {};
+  Object.keys(SCORE_DEFAULTS).forEach(k => {
+    const v = parseFloat(document.getElementById('sc_' + k).value);
+    cfg[k] = (isNaN(v) || v < 0) ? SCORE_DEFAULTS[k] : (k === 'base' ? Math.min(v, 100) : v);
+  });
+  state.settings.score = cfg;
+  save();
+  scRender();
+}
+
+function scRender() {
+  const cls = document.getElementById('scClass').value;
+  const students = rcStudents(cls);
+  const missing = students.filter(s => !s.sid).length;
+  const notice = document.getElementById('scNotice');
+  notice.style.display = 'block';
+  notice.innerHTML = (missing ? '⚠ ' + missing + ' 位缺學號，不會被匯出（到學生頁面填入學號）。<br>' : '')
+    + '匯出檔名為「' + rcEsc(cls || '平時成績') + '.xlsx」，成績掃描匯入時會以檔名作為班級名稱。';
+  document.getElementById('scList').innerHTML = students.map(s => {
+    const r = calcRegularScore(s.id);
+    return '<div class="sc-row' + (s.sid ? '' : ' nosid') + '"><div class="sc-main">'
+      + '<div class="sc-name">' + (s.no ? '<span class="rc-no">' + rcEsc(s.no) + '</span>' : '') + rcEsc(s.rawName || s.name) + '</div>'
+      + '<div class="sc-sub">' + (s.sid ? '學號 ' + rcEsc(s.sid) : '缺學號') + ' · 問答 ' + r.n + ' 次'
+      + (r.n ? '均 ' + Math.round(r.avg) : '（用基準分）') + ' · 扣 ' + (Math.round(r.deduct * 10) / 10) + '</div>'
+      + '</div><div class="sc-score">' + r.score + '</div></div>';
+  }).join('') || '<div style="padding:24px;text-align:center;color:var(--muted);font-size:0.85rem">此班級沒有學生</div>';
+}
+
+// 匯出成成績掃描「匯入名冊」可直接讀的格式（含學號者才會匯出）
+function scExport() {
+  const cls = document.getElementById('scClass').value;
+  const list = rcStudents(cls).filter(s => s.sid);
+  if (!list.length) { toast('此班級沒有學號，無法匯出', 'error'); return; }
+  const rows = [['順序', '學號', '姓名', '平時考核', '期中考試', '期末考試']];
+  list.forEach((s, i) => {
+    const seat = parseInt(s.no, 10);
+    rows.push([isNaN(seat) ? i + 1 : seat, String(s.sid), s.rawName || s.name, calcRegularScore(s.id).score, null, null]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:6},{wch:14},{wch:12},{wch:10},{wch:10},{wch:10}];
+  const wb = XLSX.utils.book_new();
+  const safe = (cls || '平時成績').replace(/[\\\/\?\*\[\]:]/g, '').trim() || '平時成績';
+  XLSX.utils.book_append_sheet(wb, ws, safe.slice(0, 31));
+  XLSX.writeFile(wb, safe + '.xlsx');
+  toast('已匯出 ' + list.length + ' 位的平時成績 🎯');
 }
 
 // ── 課堂點名 ──
@@ -833,7 +1032,7 @@ function localToday() {
 }
 
 function rcEsc(t) {
-  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function rcClassOptions() {
@@ -961,7 +1160,8 @@ function saveDataFile() {
     _app: '課堂問答記錄系統',
     students: state.students,
     records: state.records,
-    attendance: state.attendance
+    attendance: state.attendance,
+    settings: state.settings
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -997,6 +1197,7 @@ function loadDataFile(event) {
         state.students = data.students;
         state.records = data.records;
         state.attendance = Array.isArray(data.attendance) ? data.attendance : [];
+        state.settings = (data.settings && typeof data.settings === 'object') ? data.settings : {};
         save();
         activeStudentId = null;
         activeClass = '全部';
@@ -1024,10 +1225,10 @@ function exportExcel() {
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Summary
-  const summaryRows = [['姓名','座號','班級','總問答次數','完全正確','部分正確','回答錯誤','表現指數(%)','曠課(未請假)','曠課(事假)','曠課(病假)','曠課合計','缺交(練習題)','缺交(章節作業)','缺交合計']];
+  const summaryRows = [['姓名','學號','座號','班級','總問答次數','完全正確','部分正確','回答錯誤','表現指數(%)','曠課(未請假)','曠課(事假)','曠課(病假)','曠課合計','缺交(練習題)','缺交(章節作業)','缺交合計']];
   state.students.forEach(s => {
     const st = studentStats(s.id);
-    summaryRows.push([s.rawName||s.name, s.no||'', s.cls||'',
+    summaryRows.push([s.rawName||s.name, s.sid||'', s.no||'', s.cls||'',
       st.total, st.correct, st.partial, st.wrong, st.rate,
       st.absentUnexcused, st.absentPersonal, st.absentSick, st.absent,
       st.hwExercise, st.hwChapter, st.homework]);
@@ -1038,26 +1239,26 @@ function exportExcel() {
 
   // Sheet 2: All records
   const resultMap = { correct:'完全正確', wrong:'回答錯誤', partial:'部分正確' };
-  const recRows = [['學生姓名', '日期', '科目', '問題內容', '表現結果', '給分', '備註']];
+  const recRows = [['學生姓名', '學號', '日期', '科目', '問題內容', '表現結果', '給分', '備註']];
   state.records.forEach(r => {
     const s = state.students.find(st => st.id === r.studentId);
-    recRows.push([s ? (s.rawName||s.name) : '', r.date, r.subject||'', r.question, resultMap[r.result]||r.result, r.score!==null?r.score:'', r.note||'']);
+    recRows.push([s ? (s.rawName||s.name) : '', s ? (s.sid||'') : '', r.date, r.subject||'', r.question, resultMap[r.result]||r.result, r.score!==null?r.score:'', r.note||'']);
   });
   const ws2 = XLSX.utils.aoa_to_sheet(recRows);
-  ws2['!cols'] = [{wch:14},{wch:12},{wch:10},{wch:32},{wch:12},{wch:8},{wch:24}];
+  ws2['!cols'] = [{wch:14},{wch:12},{wch:12},{wch:10},{wch:32},{wch:12},{wch:8},{wch:24}];
   XLSX.utils.book_append_sheet(wb, ws2, '問答詳細記錄');
 
   // Sheet 3: Roll call records
-  const attRows = [['日期', '班級', '座號', '姓名', '出缺席']];
+  const attRows = [['日期', '班級', '座號', '學號', '姓名', '出缺席']];
   state.attendance.slice().sort((a, b) => a.date.localeCompare(b.date) || a.cls.localeCompare(b.cls)).forEach(a => {
     rcStudents(a.cls).forEach(s => {
       const st = a.marks[s.id];
       if (!st) return;
-      attRows.push([a.date, a.cls || '', s.no || '', s.rawName || s.name, RC_STATUS[st] ? RC_STATUS[st].label : st]);
+      attRows.push([a.date, a.cls || '', s.no || '', s.sid || '', s.rawName || s.name, RC_STATUS[st] ? RC_STATUS[st].label : st]);
     });
   });
   const ws3 = XLSX.utils.aoa_to_sheet(attRows);
-  ws3['!cols'] = [{wch:12},{wch:14},{wch:8},{wch:14},{wch:10}];
+  ws3['!cols'] = [{wch:12},{wch:14},{wch:8},{wch:12},{wch:14},{wch:10}];
   XLSX.utils.book_append_sheet(wb, ws3, '點名記錄');
 
   const d = new Date();
@@ -1276,6 +1477,7 @@ function renderSidebar() {
     const checked = selectedIds.has(s.id);
     const barColor = stats.rate >= 70 ? 'var(--accent2)' : stats.rate >= 40 ? 'var(--accent3)' : 'var(--accent)';
     const noDisplay = s.no ? highlightNo(s.no, searchQuery) : '';
+    const sidDisplay = s.sid ? highlightNo(s.sid, searchQuery) : '';
     const nameDisplay = s.rawName || s.name;
     const clickHandler = selectMode
       ? `onclick="toggleChip(${s.id})"`
@@ -1284,7 +1486,7 @@ function renderSidebar() {
       <div class="chip-checkbox"></div>
       <div class="student-chip-info" style="flex:1;min-width:0">
         <div class="student-name">${nameDisplay}${noDisplay ? ' <span style="font-family:\'JetBrains Mono\',monospace;font-size:0.72rem;color:var(--muted)">#'+noDisplay+'</span>' : ''}</div>
-        <div class="student-stats">${stats.total} 次問答 · ${stats.rate}%${stats.absent>0?' · 曠'+stats.absent:''}${stats.homework>0?' · 缺作'+stats.homework:''}</div>
+        ${sidDisplay ? '<div class="student-stats">學號 ' + sidDisplay + '</div>' : ''}<div class="student-stats">${stats.total} 次問答 · ${stats.rate}%${stats.absent>0?' · 曠'+stats.absent:''}${stats.homework>0?' · 缺作'+stats.homework:''}</div>
         <div class="perf-bar-wrap"><div class="perf-bar" style="width:${stats.rate}%;background:${barColor}"></div></div>
       </div>
       <div class="chip-actions">
@@ -1312,6 +1514,7 @@ function renderMain() {
         <div class="subtitle">
           加入：${new Date(student.createdAt).toLocaleDateString('zh-TW')}
           ${student.cls ? '<span style="background:var(--aged);border:1px solid var(--border);padding:1px 8px;border-radius:12px">'+student.cls+'</span>' : ''}
+          <input class="sid-input" type="text" placeholder="填入學號" value="${rcEsc(student.sid || '')}" onchange="setSid(${student.id}, this.value)" title="學號（匯出給成績掃描用）">
         </div>
       </div>
       <div class="score-badges">
