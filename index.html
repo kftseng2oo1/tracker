@@ -3,8 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a1208">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="問答記錄">
+<link rel="apple-touch-icon" href="icon-192x192.png">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
 <title>課堂問答記錄系統</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -428,6 +433,49 @@
     transition: all 0.15s; white-space: nowrap;
   }
   .btn-multiselect:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Roll call */
+  .btn-rollcall { border-color: var(--accent2); background: var(--accent2); color: #fff; font-weight: 600; }
+  .btn-rollcall:hover { background: #2f6149; border-color: #2f6149; }
+  .rc-modal { max-width: 580px; max-height: 90vh; display: flex; flex-direction: column; }
+  .rc-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .rc-controls .form-group { flex: 1; min-width: 130px; }
+  .rc-notice {
+    display: none; background: rgba(200,168,75,0.15); border: 1px solid var(--gold);
+    padding: 6px 10px; font-size: 0.75rem; margin-bottom: 8px; border-radius: 2px; line-height: 1.5;
+  }
+  .rc-summary {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--muted);
+  }
+  .rc-summary b { color: var(--ink); }
+  .rc-list {
+    overflow-y: auto; flex: 1; min-height: 120px;
+    border: 1px solid var(--border); border-radius: 2px; background: var(--paper);
+  }
+  .rc-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 10px; border-bottom: 1px solid var(--border);
+  }
+  .rc-row:last-child { border-bottom: none; }
+  .rc-row.absent { background: rgba(196,75,42,0.07); }
+  .rc-name { font-size: 0.88rem; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rc-no { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--muted); margin-right: 6px; }
+  .rc-btns { display: flex; gap: 4px; flex-shrink: 0; }
+  .rc-btn {
+    padding: 5px 9px; border: 1.5px solid var(--border); background: var(--paper);
+    font-family: 'Noto Serif TC', serif; font-size: 0.74rem; border-radius: 2px;
+    cursor: pointer; color: var(--ink); transition: all 0.15s; white-space: nowrap;
+  }
+  .rc-btn:hover { border-color: var(--ink); }
+  .rc-btn.rc-present.active   { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+  .rc-btn.rc-unexcused.active { background: #7b2d2d; border-color: #7b2d2d; color: #fff; }
+  .rc-btn.rc-personal.active  { background: var(--accent3); border-color: var(--accent3); color: #fff; }
+  .rc-btn.rc-sick.active      { background: #5a3d8a; border-color: #5a3d8a; color: #fff; }
+  @media (max-width: 480px) {
+    .rc-row { flex-direction: column; align-items: stretch; gap: 5px; }
+    .rc-btns .rc-btn { flex: 1; padding: 7px 4px; }
+  }
   @media (max-width: 700px) {
     .main-layout { grid-template-columns: 1fr; }
     .sidebar { max-height: 220px; }
@@ -443,6 +491,7 @@
   <h1>📋 課堂問答記錄系統</h1>
   <span id="autoSaveLabel" style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:rgba(200,184,154,0.5);white-space:nowrap"></span>
   <div class="header-actions">
+    <button class="btn-header btn-rollcall" onclick="openRollCall()">✅ 點名</button>
     <button class="btn-header btn-template" onclick="downloadTemplate()">⬇ 下載範本</button>
     <button class="btn-header btn-import" onclick="document.getElementById('fileInput').click()">📂 匯入 Excel</button>
     <button class="btn-header btn-export-xlsx" onclick="exportExcel()">📊 匯出報表</button>
@@ -511,6 +560,27 @@
   </div>
 </div>
 
+<!-- Roll call modal -->
+<div class="modal-overlay" id="rollCallModal" style="display:none">
+  <div class="modal rc-modal">
+    <h3>✅ 課堂點名</h3>
+    <div class="rc-controls">
+      <div class="form-group"><label>班級</label><select id="rcClass" onchange="rcLoad()"></select></div>
+      <div class="form-group"><label>日期</label><input type="date" id="rcDate" onchange="rcLoad()"></div>
+    </div>
+    <div class="rc-notice" id="rcExisting">此日期已有點名紀錄，儲存後將覆蓋，並自動調整曠課次數。</div>
+    <div class="rc-summary" id="rcSummary"></div>
+    <div class="rc-list" id="rcList"></div>
+    <div class="modal-actions" style="margin-top:14px;justify-content:space-between">
+      <button class="btn-cancel" onclick="rcAllPresent()">全部出席</button>
+      <div style="display:flex;gap:10px">
+        <button class="btn-cancel" onclick="closeModal('rollCallModal')">取消</button>
+        <button class="btn-danger" style="background:var(--accent2)" onclick="rcSave()">儲存點名</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Import preview modal -->
 <div class="modal-overlay" id="importModal" style="display:none">
   <div class="modal">
@@ -526,6 +596,7 @@
 
 <script>
 let state = JSON.parse(localStorage.getItem('classroomTracker') || '{"students":[],"records":[]}');
+if (!Array.isArray(state.attendance)) state.attendance = [];  // 點名紀錄：[{date, cls, marks:{學生id: 狀態}}]
 let activeStudentId = null;
 let selectedResult = 'correct';
 let pendingImport = [];
@@ -624,6 +695,7 @@ function deleteClass(cls) {
   document.getElementById('confirmDeleteBtn').onclick = () => {
     state.students = state.students.filter(s => (s.cls || '') !== cls);
     state.records  = state.records.filter(r => !studentIds.has(r.studentId));
+    purgeAttendance(studentIds);
     if (studentIds.has(activeStudentId)) {
       activeStudentId = null;
       document.getElementById('mainContent').innerHTML =
@@ -745,6 +817,142 @@ function importExcel(event) {
   reader.readAsArrayBuffer(file);
 }
 
+// ── 課堂點名 ──
+// 狀態對應到曠課計數欄位；出席不計數
+const RC_STATUS = {
+  present:   { label: '出席',   field: null },
+  unexcused: { label: '未請假', field: 'absent_unexcused' },
+  personal:  { label: '事假',   field: 'absent_personal' },
+  sick:      { label: '病假',   field: 'absent_sick' }
+};
+let rcMarks = {};
+
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function rcEsc(t) {
+  return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function rcClassOptions() {
+  const set = new Set(state.students.map(s => s.cls || ''));
+  return Array.from(set).sort((a, b) => a === '' ? 1 : b === '' ? -1 : a.localeCompare(b, 'zh-TW'));
+}
+
+function rcStudents(cls) {
+  return state.students.filter(s => (s.cls || '') === cls).sort((a, b) => {
+    const na = parseInt(a.no, 10), nb = parseInt(b.no, 10);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+    return String(a.rawName || a.name).localeCompare(String(b.rawName || b.name), 'zh-TW');
+  });
+}
+
+function openRollCall() {
+  if (!state.students.length) { toast('請先新增或匯入學生', 'error'); return; }
+  const opts = rcClassOptions();
+  const sel = document.getElementById('rcClass');
+  sel.innerHTML = '';
+  opts.forEach(c => sel.appendChild(new Option(c || '（未分班）', c)));
+  if (activeClass !== '全部' && opts.includes(activeClass)) sel.value = activeClass;
+  document.getElementById('rcDate').value = localToday();
+  rcLoad();
+  document.getElementById('rollCallModal').style.display = 'flex';
+}
+
+function rcLoad() {
+  const cls = document.getElementById('rcClass').value;
+  const date = document.getElementById('rcDate').value;
+  const existing = state.attendance.find(a => a.date === date && a.cls === cls);
+  rcMarks = {};
+  rcStudents(cls).forEach(s => {
+    rcMarks[s.id] = (existing && existing.marks[s.id]) || 'present';
+  });
+  document.getElementById('rcExisting').style.display = existing ? 'block' : 'none';
+  rcRender();
+}
+
+function rcRender() {
+  const cls = document.getElementById('rcClass').value;
+  const students = rcStudents(cls);
+  const counts = { present: 0, unexcused: 0, personal: 0, sick: 0 };
+  const list = document.getElementById('rcList');
+  const scroll = list.scrollTop;
+
+  list.innerHTML = students.map(s => {
+    const st = rcMarks[s.id] || 'present';
+    counts[st]++;
+    const btns = Object.keys(RC_STATUS).map(k =>
+      '<button class="rc-btn rc-' + k + (st === k ? ' active' : '') + '" onclick="rcSet(' + s.id + ',\'' + k + '\')">' + RC_STATUS[k].label + '</button>'
+    ).join('');
+    return '<div class="rc-row' + (st !== 'present' ? ' absent' : '') + '">'
+      + '<div class="rc-name">' + (s.no ? '<span class="rc-no">' + rcEsc(s.no) + '</span>' : '') + rcEsc(s.rawName || s.name) + '</div>'
+      + '<div class="rc-btns">' + btns + '</div></div>';
+  }).join('') || '<div style="padding:24px;text-align:center;color:var(--muted);font-size:0.85rem">此班級沒有學生</div>';
+
+  list.scrollTop = scroll;
+  const absent = counts.unexcused + counts.personal + counts.sick;
+  document.getElementById('rcSummary').innerHTML =
+    '<span>應到 <b>' + students.length + '</b></span>'
+    + '<span>出席 <b>' + counts.present + '</b></span>'
+    + '<span>缺席 <b>' + absent + '</b></span>'
+    + (absent ? '<span>（未請假 ' + counts.unexcused + '・事假 ' + counts.personal + '・病假 ' + counts.sick + '）</span>' : '');
+}
+
+function rcSet(id, status) {
+  rcMarks[id] = status;
+  rcRender();
+}
+
+function rcAllPresent() {
+  Object.keys(rcMarks).forEach(k => { rcMarks[k] = 'present'; });
+  rcRender();
+}
+
+function rcSave() {
+  const cls = document.getElementById('rcClass').value;
+  const date = document.getElementById('rcDate').value;
+  if (!date) { toast('請選擇日期', 'error'); return; }
+  const students = rcStudents(cls);
+  if (!students.length) { toast('此班級沒有學生', 'error'); return; }
+
+  const existing = state.attendance.find(a => a.date === date && a.cls === cls);
+  const prev = existing ? existing.marks : {};
+
+  // 與上次存檔的差異同步到曠課計數（重複儲存同一天不會重複累計）
+  const marks = {};
+  let absentNow = 0;
+  students.forEach(s => {
+    const o = prev[s.id] || 'present';
+    const n = rcMarks[s.id] || 'present';
+    marks[s.id] = n;
+    if (n !== 'present') absentNow++;
+    if (o === n) return;
+    const of = RC_STATUS[o].field, nf = RC_STATUS[n].field;
+    if (of) s[of] = Math.max(0, (s[of] || 0) - 1);
+    if (nf) s[nf] = (s[nf] || 0) + 1;
+  });
+
+  if (existing) existing.marks = marks;
+  else state.attendance.push({ date, cls, marks });
+
+  save();
+  renderSidebar();
+  if (activeStudentId) renderMain();
+  closeModal('rollCallModal');
+  toast(`已儲存點名：出席 ${students.length - absentNow}／缺席 ${absentNow} ✓`);
+}
+
+// 刪除學生時，一併清掉點名紀錄中的對應資料
+function purgeAttendance(idSet) {
+  const ids = new Set(Array.from(idSet).map(String));
+  state.attendance.forEach(a => {
+    Object.keys(a.marks).forEach(k => { if (ids.has(k)) delete a.marks[k]; });
+  });
+  state.attendance = state.attendance.filter(a => Object.keys(a.marks).length > 0);
+}
+
 // ── Save / Load data file ──
 function saveDataFile() {
   const payload = {
@@ -752,7 +960,8 @@ function saveDataFile() {
     _savedAt: new Date().toISOString(),
     _app: '課堂問答記錄系統',
     students: state.students,
-    records: state.records
+    records: state.records,
+    attendance: state.attendance
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -787,6 +996,7 @@ function loadDataFile(event) {
       document.getElementById('confirmDeleteBtn').onclick = () => {
         state.students = data.students;
         state.records = data.records;
+        state.attendance = Array.isArray(data.attendance) ? data.attendance : [];
         save();
         activeStudentId = null;
         activeClass = '全部';
@@ -837,6 +1047,19 @@ function exportExcel() {
   ws2['!cols'] = [{wch:14},{wch:12},{wch:10},{wch:32},{wch:12},{wch:8},{wch:24}];
   XLSX.utils.book_append_sheet(wb, ws2, '問答詳細記錄');
 
+  // Sheet 3: Roll call records
+  const attRows = [['日期', '班級', '座號', '姓名', '出缺席']];
+  state.attendance.slice().sort((a, b) => a.date.localeCompare(b.date) || a.cls.localeCompare(b.cls)).forEach(a => {
+    rcStudents(a.cls).forEach(s => {
+      const st = a.marks[s.id];
+      if (!st) return;
+      attRows.push([a.date, a.cls || '', s.no || '', s.rawName || s.name, RC_STATUS[st] ? RC_STATUS[st].label : st]);
+    });
+  });
+  const ws3 = XLSX.utils.aoa_to_sheet(attRows);
+  ws3['!cols'] = [{wch:12},{wch:14},{wch:8},{wch:14},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, ws3, '點名記錄');
+
   const d = new Date();
   const ds = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
   XLSX.writeFile(wb, `課堂問答記錄_${ds}.xlsx`);
@@ -861,6 +1084,7 @@ function deleteStudent(id) {
   document.getElementById('confirmDeleteBtn').onclick = () => {
     state.students = state.students.filter(s => s.id !== id);
     state.records = state.records.filter(r => r.studentId !== id);
+    purgeAttendance(new Set([id]));
     save();
     if (activeStudentId === id) {
       activeStudentId = null;
@@ -1001,6 +1225,7 @@ function deleteSelected() {
     const toDelete = new Set(selectedIds);
     state.students = state.students.filter(s => !toDelete.has(s.id));
     state.records = state.records.filter(r => !toDelete.has(r.studentId));
+    purgeAttendance(toDelete);
     if (toDelete.has(activeStudentId)) {
       activeStudentId = null;
       document.getElementById('mainContent').innerHTML = `<div class="empty-state"><div class="icon">🎓</div><h3>選擇學生</h3><p>從左側選擇學生以查看記錄。</p></div>`;
@@ -1210,6 +1435,13 @@ function renderMain() {
   setResult(selectedResult);
   setDiff(selectedDiff);
   refreshScorePreview();
+}
+
+// ── Service Worker ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW failed:', err));
+  });
 }
 </script>
 </body>
